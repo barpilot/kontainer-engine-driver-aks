@@ -4,6 +4,7 @@ contrib.go.opencensus.io/exporter/ocagent v0.4.3 h1:QjNm697iO7CZ09IxxSiCUzOhALEN
 contrib.go.opencensus.io/exporter/ocagent v0.4.3/go.mod h1:YuG83h+XWwqWjvCqn7vK4KSyLKhThY3+gNGQ37iS2V0=
 git.apache.org/thrift.git v0.0.0-20180902110319-2566ecd5d999/go.mod h1:fPE2ZNJGynbRyZ4dJvy6G277gSllfV2HJqblrnkyeyg=
 git.apache.org/thrift.git v0.0.0-20181218151757-9b75e4fe745a/go.mod h1:fPE2ZNJGynbRyZ4dJvy6G277gSllfV2HJqblrnkyeyg=
+github.com/Azure/azure-sdk v0.0.0-20190214141247-02ce18f4f3d2 h1:yVm4nJiaNniNIwA6fZbCysxzVOCeBh/rh9XTJx+duNU=
 github.com/Azure/azure-sdk-for-go v19.1.0+incompatible h1:ysqLW+tqZjJWOTE74heH/pDRbr4vlN3yV+dqQYgpyxw=
 github.com/Azure/azure-sdk-for-go v19.1.0+incompatible/go.mod h1:9XXNKU+eRnpl9moKnB4QOLf1HestfXbmab5FXxiDBjc=
 github.com/Azure/azure-sdk-for-go v25.1.0+incompatible h1:bA8mqsHUc9RbzHG64A6r7KnpvLFHJdxrpI75FrFln2M=
