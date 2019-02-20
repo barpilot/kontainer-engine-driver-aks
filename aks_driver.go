@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/containerservice/mgmt/2018-03-31/containerservice"
+	"github.com/Azure/azure-sdk-for-go/services/preview/network/mgmt/2015-05-01-preview/network"
 	"github.com/Azure/azure-sdk-for-go/services/preview/operationalinsights/mgmt/2015-11-01-preview/operationalinsights"
 	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2017-05-10/resources"
 	"github.com/Azure/go-autorest/autorest"
@@ -610,6 +611,69 @@ func newOperationInsightsWorkspaceClient(authorizer autorest.Authorizer, state s
 	return &client, nil
 }
 
+func newRouteTablesClient(authorizer autorest.Authorizer, state state) (*network.RouteTablesClient, error) {
+	if authorizer == nil {
+		newAuthorizer, err := newClientAuthorizer(state)
+		if err != nil {
+			return nil, err
+		}
+
+		authorizer = newAuthorizer
+	}
+
+	baseURL := state.BaseURL
+	if baseURL == "" {
+		baseURL = azure.PublicCloud.ResourceManagerEndpoint
+	}
+
+	client := network.NewRouteTablesClientWithBaseURI(baseURL, state.SubscriptionID)
+	client.Authorizer = authorizer
+
+	return &client, nil
+}
+
+func newSecurityGroupsClient(authorizer autorest.Authorizer, state state) (*network.SecurityGroupsClient, error) {
+	if authorizer == nil {
+		newAuthorizer, err := newClientAuthorizer(state)
+		if err != nil {
+			return nil, err
+		}
+
+		authorizer = newAuthorizer
+	}
+
+	baseURL := state.BaseURL
+	if baseURL == "" {
+		baseURL = azure.PublicCloud.ResourceManagerEndpoint
+	}
+
+	client := network.NewSecurityGroupsClientWithBaseURI(baseURL, state.SubscriptionID)
+	client.Authorizer = authorizer
+
+	return &client, nil
+}
+
+func newSubnetsClient(authorizer autorest.Authorizer, state state) (*network.SubnetsClient, error) {
+	if authorizer == nil {
+		newAuthorizer, err := newClientAuthorizer(state)
+		if err != nil {
+			return nil, err
+		}
+
+		authorizer = newAuthorizer
+	}
+
+	baseURL := state.BaseURL
+	if baseURL == "" {
+		baseURL = azure.PublicCloud.ResourceManagerEndpoint
+	}
+
+	client := network.NewSubnetsClientWithBaseURI(baseURL, state.SubscriptionID)
+	client.Authorizer = authorizer
+
+	return &client, nil
+}
+
 const failedStatus = "Failed"
 const succeededStatus = "Succeeded"
 const creatingStatus = "Creating"
@@ -898,6 +962,12 @@ func (d *Driver) createOrUpdate(ctx context.Context, options *types.DriverOption
 			logrus.Info("Cluster provisioned successfully")
 			info := &types.ClusterInfo{}
 			err := storeState(info, driverState)
+
+			if driverState.hasCustomVirtualNetwork() && networkProfile.NetworkPlugin == containerservice.Kubenet {
+				if err := associateNetworkRessourcesWithNodeSubnet(ctx, driverState); err != nil {
+					return info, err
+				}
+			}
 
 			return info, err
 		}
@@ -1400,4 +1470,69 @@ func (d *Driver) GetK8SCapabilities(ctx context.Context, _ *types.DriverOptions)
 			HealthCheckSupported: true,
 		},
 	}, nil
+}
+
+func associateNetworkRessourcesWithNodeSubnet(ctx context.Context, state state) error {
+
+	client, err := newClustersClient(nil, state)
+
+	if err != nil {
+		return err
+	}
+
+	cluster, err := client.Get(context.Background(), state.ResourceGroup, state.Name)
+
+	if err != nil {
+		return fmt.Errorf("error getting cluster info: %v", err)
+	}
+
+	rtClient, err := newRouteTablesClient(nil, state)
+
+	if err != nil {
+		return err
+	}
+
+	routeTables, err := rtClient.List(context.Background(), *cluster.NodeResourceGroup)
+
+	if err != nil {
+		return fmt.Errorf("error listing route tables info: %v", err)
+	}
+
+	routeTableID := routeTables.Values()[0].ID
+
+	sgClient, err := newSecurityGroupsClient(nil, state)
+
+	if err != nil {
+		return err
+	}
+
+	securityGroups, err := sgClient.List(context.Background(), *cluster.NodeResourceGroup)
+
+	if err != nil {
+		return fmt.Errorf("error listing security group info: %v", err)
+	}
+
+	sgID := securityGroups.Values()[0].ID
+
+	subnetClient, err := newSubnetsClient(nil, state)
+
+	if err != nil {
+		return err
+	}
+
+	subnet, err := subnetClient.Get(context.Background(), state.VirtualNetworkResourceGroup, state.VirtualNetwork, state.Subnet)
+
+	if err != nil {
+		return fmt.Errorf("error getting subnet info: %v", err)
+	}
+
+	subnet.NetworkSecurityGroup.ID = sgID
+	subnet.RouteTable.ID = routeTableID
+
+	_, err = subnetClient.CreateOrUpdate(context.Background(), state.VirtualNetworkResourceGroup, state.VirtualNetwork, state.Subnet, subnet)
+
+	if err != nil {
+		return fmt.Errorf("error updating subnet: %v", err)
+	}
+	return nil
 }
