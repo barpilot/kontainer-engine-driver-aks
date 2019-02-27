@@ -1332,7 +1332,7 @@ func getClientset(info *types.ClusterInfo) (*kubernetes.Clientset, error) {
 		return nil, err
 	}
 
-	result, err := client.GetAccessProfile(context.Background(), state.ResourceGroup, state.Name, "clusterUser")
+	result, err := client.GetAccessProfile(context.Background(), state.ResourceGroup, state.Name, "clusterAdmin")
 
 	if err != nil {
 		return nil, err
