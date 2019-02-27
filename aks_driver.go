@@ -49,13 +49,13 @@ type state struct {
 	Azure Kubernetes Service API Request Body
 	*/
 	// AzureADClientAppID specifies the client ID of Azure Active Directory. [optional when creating]
-	AzureADClientAppID string `json:"addClientAppId,omitempty"`
+	AzureADClientAppID string `json:"aadClientAppId,omitempty"`
 	// AzureADServerAppID specifies the server ID of Azure Active Directory. [optional when creating]
-	AzureADServerAppID string `json:"addServerAppId,omitempty"`
+	AzureADServerAppID string `json:"aadServerAppId,omitempty"`
 	// AzureADServerAppSecret specifies the server secret of Azure Active Directory. [optional when creating]
-	AzureADServerAppSecret string `json:"addServerAppSecret,omitempty"`
+	AzureADServerAppSecret string `json:"aadServerAppSecret,omitempty"`
 	// AzureADTenantID specifies the tenant ID of Azure Active Directory. [optional when creating]
-	AzureADTenantID string `json:"addTenantId,omitempty"`
+	AzureADTenantID string `json:"aadTenantId,omitempty"`
 
 	// AddonEnableHTTPApplicationRouting specifies to enable "httpApplicationRouting" addon or not. [optional]
 	AddonEnableHTTPApplicationRouting bool `json:"enableHttpApplicationRouting,omitempty"`
@@ -417,10 +417,10 @@ func getStateFromOptions(driverOptions *types.DriverOptions) (state, error) {
 	state.ResourceGroup = options.GetValueFromDriverOptions(driverOptions, types.StringType, "resource-group", "resourceGroup").(string)
 	state.Name = options.GetValueFromDriverOptions(driverOptions, types.StringType, "name").(string)
 
-	state.AzureADClientAppID = options.GetValueFromDriverOptions(driverOptions, types.StringType, "aad-client-app-id", "addClientAppId").(string)
-	state.AzureADServerAppID = options.GetValueFromDriverOptions(driverOptions, types.StringType, "aad-server-app-id", "addServerAppId").(string)
-	state.AzureADServerAppSecret = options.GetValueFromDriverOptions(driverOptions, types.StringType, "aad-server-app-secret", "addServerAppSecret").(string)
-	state.AzureADTenantID = options.GetValueFromDriverOptions(driverOptions, types.StringType, "aad-tenant-id", "addTenantId").(string)
+	state.AzureADClientAppID = options.GetValueFromDriverOptions(driverOptions, types.StringType, "aad-client-app-id", "aadClientAppId").(string)
+	state.AzureADServerAppID = options.GetValueFromDriverOptions(driverOptions, types.StringType, "aad-server-app-id", "aadServerAppId").(string)
+	state.AzureADServerAppSecret = options.GetValueFromDriverOptions(driverOptions, types.StringType, "aad-server-app-secret", "aadServerAppSecret").(string)
+	state.AzureADTenantID = options.GetValueFromDriverOptions(driverOptions, types.StringType, "aad-tenant-id", "aadTenantId").(string)
 
 	state.AddonEnableHTTPApplicationRouting = options.GetValueFromDriverOptions(driverOptions, types.BoolType, "enable-http-application-routing", "enableHttpApplicationRouting").(bool)
 	state.AddonEnableMonitoring = options.GetValueFromDriverOptions(driverOptions, types.BoolType, "enable-monitoring", "enableMonitoring").(bool)
@@ -794,20 +794,16 @@ func (d *Driver) createOrUpdate(ctx context.Context, options *types.DriverOption
 	var vmNetSubnetID *string
 	var networkProfile *containerservice.NetworkProfile
 	if driverState.hasCustomVirtualNetwork() {
-		virtualNetworkResourceGroup := driverState.ResourceGroup
-
-		// if virtual network resource group is set, use it, otherwise assume it is the same as the cluster
-		if driverState.VirtualNetworkResourceGroup != "" {
-			virtualNetworkResourceGroup = driverState.VirtualNetworkResourceGroup
+		if err := subnetAlreadyAttached(ctx, driverState); err != nil {
+			return info, err
 		}
 
-		vmNetSubnetID = to.StringPtr(fmt.Sprintf(
-			"/subscriptions/%v/resourceGroups/%v/providers/Microsoft.Network/virtualNetworks/%v/subnets/%v",
-			driverState.SubscriptionID,
-			virtualNetworkResourceGroup,
-			driverState.VirtualNetwork,
-			driverState.Subnet,
-		))
+		subnet, err := getSubnet(ctx, driverState)
+		if err != nil {
+			return info, err
+		}
+
+		vmNetSubnetID = subnet.ID
 
 		networkProfile = &containerservice.NetworkProfile{
 			DNSServiceIP:     to.StringPtr(driverState.NetworkDNSServiceIP),
@@ -962,13 +958,6 @@ func (d *Driver) createOrUpdate(ctx context.Context, options *types.DriverOption
 			logrus.Info("Cluster provisioned successfully")
 			info := &types.ClusterInfo{}
 			err := storeState(info, driverState)
-
-			if driverState.hasCustomVirtualNetwork() && networkProfile.NetworkPlugin == containerservice.Kubenet {
-				if err := associateNetworkRessourcesWithNodeSubnet(ctx, driverState); err != nil {
-					return info, err
-				}
-			}
-
 			return info, err
 		}
 
@@ -1300,6 +1289,10 @@ func (d *Driver) PostCheck(ctx context.Context, info *types.ClusterInfo) (*types
 		return nil, err
 	}
 
+	if err := associateNetworkRessourcesWithNodeSubnet(info); err != nil {
+		return info, err
+	}
+
 	failureCount := 0
 
 	for {
@@ -1339,7 +1332,7 @@ func getClientset(info *types.ClusterInfo) (*kubernetes.Clientset, error) {
 		return nil, err
 	}
 
-	result, err := client.GetAccessProfile(context.Background(), state.ResourceGroup, state.Name, "clusterUser")
+	result, err := client.GetAccessProfile(context.Background(), state.ResourceGroup, state.Name, "clusterAdmin")
 
 	if err != nil {
 		return nil, err
@@ -1472,7 +1465,15 @@ func (d *Driver) GetK8SCapabilities(ctx context.Context, _ *types.DriverOptions)
 	}, nil
 }
 
-func associateNetworkRessourcesWithNodeSubnet(ctx context.Context, state state) error {
+func associateNetworkRessourcesWithNodeSubnet(info *types.ClusterInfo) error {
+	state, err := getState(info)
+
+	// associate only if custom network and plugin is kubenet
+	if state.hasCustomVirtualNetwork() && containerservice.NetworkPlugin(state.NetworkPlugin) == containerservice.Kubenet {
+		logrus.Info("Associate subnet to routetable")
+	} else {
+		return nil
+	}
 
 	client, err := newClustersClient(nil, state)
 
@@ -1520,22 +1521,52 @@ func associateNetworkRessourcesWithNodeSubnet(ctx context.Context, state state) 
 		return err
 	}
 
-	subnet, err := subnetClient.Get(context.Background(), state.VirtualNetworkResourceGroup, state.VirtualNetwork, state.Subnet)
-
+	subnet, err := getSubnet(context.Background(), state)
 	if err != nil {
 		return fmt.Errorf("error getting subnet info: %v", err)
 	}
 
-	logrus.Infof("Network Security Group: %v", sgID)
-	logrus.Infof("Route Table: %v", routeTableID)
-
 	subnet.NetworkSecurityGroup = &network.SubResource{ID: sgID}
 	subnet.RouteTable = &network.SubResource{ID: routeTableID}
+
+	if err := subnetAlreadyAttached(context.Background(), state); err != nil {
+		return err
+	}
 
 	_, err = subnetClient.CreateOrUpdate(context.Background(), state.VirtualNetworkResourceGroup, state.VirtualNetwork, state.Subnet, subnet)
 
 	if err != nil {
 		return fmt.Errorf("error updating subnet: %v", err)
+	}
+	return nil
+}
+
+func getSubnet(ctx context.Context, state state) (network.Subnet, error) {
+	nrg := state.VirtualNetworkResourceGroup
+
+	// if virtual network resource group is unset, assume it is the same as the cluster
+	if nrg == "" {
+		nrg = state.ResourceGroup
+	}
+
+	subnetClient, err := newSubnetsClient(nil, state)
+
+	if err != nil {
+		return network.Subnet{}, err
+	}
+
+	return subnetClient.Get(context.Background(), nrg, state.VirtualNetwork, state.Subnet)
+}
+
+func subnetAlreadyAttached(ctx context.Context, state state) error {
+
+	subnet, err := getSubnet(ctx, state)
+	if err != nil {
+		return err
+	}
+
+	if subnet.RouteTable != nil {
+		return fmt.Errorf("subnet already attached to a routing table %v", *subnet.RouteTable.ID)
 	}
 	return nil
 }
