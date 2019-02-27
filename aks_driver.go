@@ -49,13 +49,13 @@ type state struct {
 	Azure Kubernetes Service API Request Body
 	*/
 	// AzureADClientAppID specifies the client ID of Azure Active Directory. [optional when creating]
-	AzureADClientAppID string `json:"addClientAppId,omitempty"`
+	AzureADClientAppID string `json:"aadClientAppId,omitempty"`
 	// AzureADServerAppID specifies the server ID of Azure Active Directory. [optional when creating]
-	AzureADServerAppID string `json:"addServerAppId,omitempty"`
+	AzureADServerAppID string `json:"aadServerAppId,omitempty"`
 	// AzureADServerAppSecret specifies the server secret of Azure Active Directory. [optional when creating]
-	AzureADServerAppSecret string `json:"addServerAppSecret,omitempty"`
+	AzureADServerAppSecret string `json:"aadServerAppSecret,omitempty"`
 	// AzureADTenantID specifies the tenant ID of Azure Active Directory. [optional when creating]
-	AzureADTenantID string `json:"addTenantId,omitempty"`
+	AzureADTenantID string `json:"aadTenantId,omitempty"`
 
 	// AddonEnableHTTPApplicationRouting specifies to enable "httpApplicationRouting" addon or not. [optional]
 	AddonEnableHTTPApplicationRouting bool `json:"enableHttpApplicationRouting,omitempty"`
@@ -417,10 +417,10 @@ func getStateFromOptions(driverOptions *types.DriverOptions) (state, error) {
 	state.ResourceGroup = options.GetValueFromDriverOptions(driverOptions, types.StringType, "resource-group", "resourceGroup").(string)
 	state.Name = options.GetValueFromDriverOptions(driverOptions, types.StringType, "name").(string)
 
-	state.AzureADClientAppID = options.GetValueFromDriverOptions(driverOptions, types.StringType, "aad-client-app-id", "addClientAppId").(string)
-	state.AzureADServerAppID = options.GetValueFromDriverOptions(driverOptions, types.StringType, "aad-server-app-id", "addServerAppId").(string)
-	state.AzureADServerAppSecret = options.GetValueFromDriverOptions(driverOptions, types.StringType, "aad-server-app-secret", "addServerAppSecret").(string)
-	state.AzureADTenantID = options.GetValueFromDriverOptions(driverOptions, types.StringType, "aad-tenant-id", "addTenantId").(string)
+	state.AzureADClientAppID = options.GetValueFromDriverOptions(driverOptions, types.StringType, "aad-client-app-id", "aadClientAppId").(string)
+	state.AzureADServerAppID = options.GetValueFromDriverOptions(driverOptions, types.StringType, "aad-server-app-id", "aadServerAppId").(string)
+	state.AzureADServerAppSecret = options.GetValueFromDriverOptions(driverOptions, types.StringType, "aad-server-app-secret", "aadServerAppSecret").(string)
+	state.AzureADTenantID = options.GetValueFromDriverOptions(driverOptions, types.StringType, "aad-tenant-id", "aadTenantId").(string)
 
 	state.AddonEnableHTTPApplicationRouting = options.GetValueFromDriverOptions(driverOptions, types.BoolType, "enable-http-application-routing", "enableHttpApplicationRouting").(bool)
 	state.AddonEnableMonitoring = options.GetValueFromDriverOptions(driverOptions, types.BoolType, "enable-monitoring", "enableMonitoring").(bool)
