@@ -958,13 +958,6 @@ func (d *Driver) createOrUpdate(ctx context.Context, options *types.DriverOption
 			logrus.Info("Cluster provisioned successfully")
 			info := &types.ClusterInfo{}
 			err := storeState(info, driverState)
-
-			if driverState.hasCustomVirtualNetwork() && networkProfile.NetworkPlugin == containerservice.Kubenet {
-				if err := associateNetworkRessourcesWithNodeSubnet(ctx, driverState); err != nil {
-					return info, err
-				}
-			}
-
 			return info, err
 		}
 
@@ -1296,6 +1289,10 @@ func (d *Driver) PostCheck(ctx context.Context, info *types.ClusterInfo) (*types
 		return nil, err
 	}
 
+	if err := associateNetworkRessourcesWithNodeSubnet(info); err != nil {
+		return info, err
+	}
+
 	failureCount := 0
 
 	for {
@@ -1468,7 +1465,15 @@ func (d *Driver) GetK8SCapabilities(ctx context.Context, _ *types.DriverOptions)
 	}, nil
 }
 
-func associateNetworkRessourcesWithNodeSubnet(ctx context.Context, state state) error {
+func associateNetworkRessourcesWithNodeSubnet(info *types.ClusterInfo) error {
+	state, err := getState(info)
+
+	// associate only if custom network and plugin is kubenet
+	if state.hasCustomVirtualNetwork() && containerservice.NetworkPlugin(state.NetworkPlugin) == containerservice.Kubenet {
+		logrus.Info("Associate subnet to routetable")
+	} else {
+		return nil
+	}
 
 	client, err := newClustersClient(nil, state)
 
@@ -1516,7 +1521,7 @@ func associateNetworkRessourcesWithNodeSubnet(ctx context.Context, state state) 
 		return err
 	}
 
-	subnet, err := getSubnet(ctx, state)
+	subnet, err := getSubnet(context.Background(), state)
 	if err != nil {
 		return fmt.Errorf("error getting subnet info: %v", err)
 	}
@@ -1524,7 +1529,7 @@ func associateNetworkRessourcesWithNodeSubnet(ctx context.Context, state state) 
 	subnet.NetworkSecurityGroup = &network.SubResource{ID: sgID}
 	subnet.RouteTable = &network.SubResource{ID: routeTableID}
 
-	if err := subnetAlreadyAttached(ctx, state); err != nil {
+	if err := subnetAlreadyAttached(context.Background(), state); err != nil {
 		return err
 	}
 
