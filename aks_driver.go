@@ -794,20 +794,16 @@ func (d *Driver) createOrUpdate(ctx context.Context, options *types.DriverOption
 	var vmNetSubnetID *string
 	var networkProfile *containerservice.NetworkProfile
 	if driverState.hasCustomVirtualNetwork() {
-		virtualNetworkResourceGroup := driverState.ResourceGroup
-
-		// if virtual network resource group is set, use it, otherwise assume it is the same as the cluster
-		if driverState.VirtualNetworkResourceGroup != "" {
-			virtualNetworkResourceGroup = driverState.VirtualNetworkResourceGroup
+		if err := subnetAlreadyAttached(ctx, driverState); err != nil {
+			return info, err
 		}
 
-		vmNetSubnetID = to.StringPtr(fmt.Sprintf(
-			"/subscriptions/%v/resourceGroups/%v/providers/Microsoft.Network/virtualNetworks/%v/subnets/%v",
-			driverState.SubscriptionID,
-			virtualNetworkResourceGroup,
-			driverState.VirtualNetwork,
-			driverState.Subnet,
-		))
+		subnet, err := getSubnet(ctx, driverState)
+		if err != nil {
+			return info, err
+		}
+
+		vmNetSubnetID = subnet.ID
 
 		networkProfile = &containerservice.NetworkProfile{
 			DNSServiceIP:     to.StringPtr(driverState.NetworkDNSServiceIP),
@@ -1520,22 +1516,52 @@ func associateNetworkRessourcesWithNodeSubnet(ctx context.Context, state state) 
 		return err
 	}
 
-	subnet, err := subnetClient.Get(context.Background(), state.VirtualNetworkResourceGroup, state.VirtualNetwork, state.Subnet)
-
+	subnet, err := getSubnet(ctx, state)
 	if err != nil {
 		return fmt.Errorf("error getting subnet info: %v", err)
 	}
 
-	logrus.Infof("Network Security Group: %v", sgID)
-	logrus.Infof("Route Table: %v", routeTableID)
-
 	subnet.NetworkSecurityGroup = &network.SubResource{ID: sgID}
 	subnet.RouteTable = &network.SubResource{ID: routeTableID}
+
+	if err := subnetAlreadyAttached(ctx, state); err != nil {
+		return err
+	}
 
 	_, err = subnetClient.CreateOrUpdate(context.Background(), state.VirtualNetworkResourceGroup, state.VirtualNetwork, state.Subnet, subnet)
 
 	if err != nil {
 		return fmt.Errorf("error updating subnet: %v", err)
+	}
+	return nil
+}
+
+func getSubnet(ctx context.Context, state state) (network.Subnet, error) {
+	nrg := state.VirtualNetworkResourceGroup
+
+	// if virtual network resource group is unset, assume it is the same as the cluster
+	if nrg == "" {
+		nrg = state.ResourceGroup
+	}
+
+	subnetClient, err := newSubnetsClient(nil, state)
+
+	if err != nil {
+		return network.Subnet{}, err
+	}
+
+	return subnetClient.Get(context.Background(), nrg, state.VirtualNetwork, state.Subnet)
+}
+
+func subnetAlreadyAttached(ctx context.Context, state state) error {
+
+	subnet, err := getSubnet(ctx, state)
+	if err != nil {
+		return err
+	}
+
+	if subnet.RouteTable != nil {
+		return fmt.Errorf("subnet already attached to a routing table %v", *subnet.RouteTable.ID)
 	}
 	return nil
 }
