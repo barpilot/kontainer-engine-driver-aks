@@ -794,7 +794,7 @@ func (d *Driver) createOrUpdate(ctx context.Context, options *types.DriverOption
 	var vmNetSubnetID *string
 	var networkProfile *containerservice.NetworkProfile
 	if driverState.hasCustomVirtualNetwork() {
-		if err := subnetAlreadyAttached(ctx, driverState); err != nil {
+		if err := subnetAlreadyAttached(ctx, driverState, ""); err != nil {
 			return info, err
 		}
 
@@ -1529,7 +1529,7 @@ func associateNetworkRessourcesWithNodeSubnet(info *types.ClusterInfo) error {
 	subnet.NetworkSecurityGroup = &network.SubResource{ID: sgID}
 	subnet.RouteTable = &network.SubResource{ID: routeTableID}
 
-	if err := subnetAlreadyAttached(context.Background(), state); err != nil {
+	if err := subnetAlreadyAttached(context.Background(), state, *subnet.RouteTable.ID); err != nil {
 		return err
 	}
 
@@ -1558,7 +1558,7 @@ func getSubnet(ctx context.Context, state state) (network.Subnet, error) {
 	return subnetClient.Get(context.Background(), nrg, state.VirtualNetwork, state.Subnet)
 }
 
-func subnetAlreadyAttached(ctx context.Context, state state) error {
+func subnetAlreadyAttached(ctx context.Context, state state, routeTableID string) error {
 
 	subnet, err := getSubnet(ctx, state)
 	if err != nil {
@@ -1566,6 +1566,10 @@ func subnetAlreadyAttached(ctx context.Context, state state) error {
 	}
 
 	if subnet.RouteTable != nil {
+		if *subnet.RouteTable.ID == routeTableID {
+			// Already attach to right route table
+			return nil
+		}
 		return fmt.Errorf("subnet already attached to a routing table %v", *subnet.RouteTable.ID)
 	}
 	return nil
