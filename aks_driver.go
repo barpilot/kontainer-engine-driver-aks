@@ -1529,7 +1529,7 @@ func associateNetworkRessourcesWithNodeSubnet(info *types.ClusterInfo) error {
 	subnet.NetworkSecurityGroup = &network.SubResource{ID: sgID}
 	subnet.RouteTable = &network.SubResource{ID: routeTableID}
 
-	if err := subnetAlreadyAttached(context.Background(), state, subnet.RouteTable); err != nil {
+	if err := subnetAlreadyAttached(context.Background(), state, *subnet.RouteTable.ID); err != nil {
 		return err
 	}
 
