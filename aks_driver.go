@@ -738,6 +738,12 @@ func (d *Driver) createOrUpdate(ctx context.Context, options *types.DriverOption
 	}
 	tags["displayName"] = to.StringPtr(displayName)
 
+	if driverState.hasCustomVirtualNetwork() && driverState.NetworkPlugin == "kubenet" {
+		if err := subnetAlreadyAttached(ctx, driverState, ""); err != nil {
+			return info, err
+		}
+	}
+
 	exists, err := d.resourceGroupExists(ctx, resourceGroupsClient, driverState.ResourceGroup)
 	if err != nil {
 		return info, err
@@ -794,9 +800,6 @@ func (d *Driver) createOrUpdate(ctx context.Context, options *types.DriverOption
 	var vmNetSubnetID *string
 	var networkProfile *containerservice.NetworkProfile
 	if driverState.hasCustomVirtualNetwork() {
-		if err := subnetAlreadyAttached(ctx, driverState, ""); err != nil {
-			return info, err
-		}
 
 		subnet, err := getSubnet(ctx, driverState)
 		if err != nil {
