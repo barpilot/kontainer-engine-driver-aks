@@ -1395,9 +1395,27 @@ func getClientset(info *types.ClusterInfo) (*kubernetes.Clientset, error) {
 
 func (d *Driver) Remove(ctx context.Context, info *types.ClusterInfo) error {
 	state, err := getState(info)
-
 	if err != nil {
 		return err
+	}
+
+	resourceGroupsClient, err := newResourceGroupsClient(nil, state)
+	if err != nil {
+		return err
+	}
+
+	exists, err := d.resourceGroupExists(ctx, resourceGroupsClient, state.ResourceGroup)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		logrus.Infof("Resource group %v doesn't exists", state.ResourceGroup)
+		return nil
+	}
+
+	if err := removeAssociationNetworkRessourcesWithNodeSubnet(info); err != nil {
+		logrus.Error(err)
 	}
 
 	client, err := newClustersClient(nil, state)
@@ -1537,6 +1555,38 @@ func associateNetworkRessourcesWithNodeSubnet(info *types.ClusterInfo) error {
 	if err := subnetAlreadyAttached(context.Background(), state, *subnet.RouteTable.ID); err != nil {
 		return err
 	}
+
+	_, err = subnetClient.CreateOrUpdate(context.Background(), state.VirtualNetworkResourceGroup, state.VirtualNetwork, state.Subnet, subnet)
+
+	if err != nil {
+		return fmt.Errorf("error updating subnet: %v", err)
+	}
+	return nil
+}
+
+func removeAssociationNetworkRessourcesWithNodeSubnet(info *types.ClusterInfo) error {
+	state, err := getState(info)
+
+	// associate only if custom network and plugin is kubenet
+	if shouldBeAssociate(state) {
+		logrus.Info("Deassociate subnet to routetable")
+	} else {
+		return nil
+	}
+
+	subnetClient, err := newSubnetsClient(nil, state)
+
+	if err != nil {
+		return err
+	}
+
+	subnet, err := getSubnet(context.Background(), state)
+	if err != nil {
+		return fmt.Errorf("error getting subnet info: %v", err)
+	}
+
+	subnet.NetworkSecurityGroup = nil
+	subnet.RouteTable = nil
 
 	_, err = subnetClient.CreateOrUpdate(context.Background(), state.VirtualNetworkResourceGroup, state.VirtualNetwork, state.Subnet, subnet)
 
