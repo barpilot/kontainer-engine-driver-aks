@@ -738,6 +738,10 @@ func (d *Driver) createOrUpdate(ctx context.Context, options *types.DriverOption
 	}
 	tags["displayName"] = to.StringPtr(displayName)
 
+	if err := subnetAlreadyAttached(ctx, driverState, ""); err != nil {
+		return info, err
+	}
+
 	exists, err := d.resourceGroupExists(ctx, resourceGroupsClient, driverState.ResourceGroup)
 	if err != nil {
 		return info, err
@@ -794,9 +798,6 @@ func (d *Driver) createOrUpdate(ctx context.Context, options *types.DriverOption
 	var vmNetSubnetID *string
 	var networkProfile *containerservice.NetworkProfile
 	if driverState.hasCustomVirtualNetwork() {
-		if err := subnetAlreadyAttached(ctx, driverState, ""); err != nil {
-			return info, err
-		}
 
 		subnet, err := getSubnet(ctx, driverState)
 		if err != nil {
@@ -1465,11 +1466,15 @@ func (d *Driver) GetK8SCapabilities(ctx context.Context, _ *types.DriverOptions)
 	}, nil
 }
 
+func shouldBeAssociate(state state) bool {
+	return state.hasCustomVirtualNetwork() && containerservice.NetworkPlugin(state.NetworkPlugin) == containerservice.Kubenet
+}
+
 func associateNetworkRessourcesWithNodeSubnet(info *types.ClusterInfo) error {
 	state, err := getState(info)
 
 	// associate only if custom network and plugin is kubenet
-	if state.hasCustomVirtualNetwork() && containerservice.NetworkPlugin(state.NetworkPlugin) == containerservice.Kubenet {
+	if shouldBeAssociate(state) {
 		logrus.Info("Associate subnet to routetable")
 	} else {
 		return nil
@@ -1559,6 +1564,10 @@ func getSubnet(ctx context.Context, state state) (network.Subnet, error) {
 }
 
 func subnetAlreadyAttached(ctx context.Context, state state, routeTableID string) error {
+
+	if !shouldBeAssociate(state) {
+		return nil
+	}
 
 	subnet, err := getSubnet(ctx, state)
 	if err != nil {
