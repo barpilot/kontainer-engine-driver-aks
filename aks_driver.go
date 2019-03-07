@@ -678,6 +678,7 @@ const failedStatus = "Failed"
 const succeededStatus = "Succeeded"
 const creatingStatus = "Creating"
 const updatingStatus = "Updating"
+const scalingStatus = "Scaling"
 
 const pollInterval = 30
 
@@ -944,9 +945,9 @@ func (d *Driver) createOrUpdate(ctx context.Context, options *types.DriverOption
 			return info, err
 		}
 
-		state := *result.ProvisioningState
+		switch state := *result.ProvisioningState; state {
 
-		if state == failedStatus {
+		case failedStatus:
 			if failedCount > 3 {
 				logrus.Errorf("cluster recovery failed, retries depleted")
 				return info, fmt.Errorf("cluster create has completed with status of 'Failed'")
@@ -955,18 +956,20 @@ func (d *Driver) createOrUpdate(ctx context.Context, options *types.DriverOption
 			failedCount = failedCount + 1
 			logrus.Infof("cluster marked as failed but waiting for recovery: retries left %v", 3-failedCount)
 			time.Sleep(pollInterval * time.Second)
-		}
 
-		if state == succeededStatus {
+		case scalingStatus, creatingStatus, updatingStatus:
+			logrus.Infof("Cluster %v is %v", driverState.Name, state)
+
+		case succeededStatus:
 			logrus.Info("Cluster provisioned successfully")
 			info := &types.ClusterInfo{}
 			err := storeState(info, driverState)
 			return info, err
-		}
 
-		if state != creatingStatus && state != updatingStatus {
+		default:
 			logrus.Errorf("Azure failed to provision cluster with state: %v", state)
 			return info, fmt.Errorf("failed to provision Azure cluster")
+
 		}
 
 		logrus.Infof("Cluster has not yet completed provisioning, waiting another %v seconds", pollInterval)

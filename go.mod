@@ -6,6 +6,7 @@ require (
 	github.com/Azure/go-autorest v11.4.0+incompatible
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
 	github.com/docker/distribution v2.7.1+incompatible // indirect
+	github.com/fsnotify/fsnotify v1.4.7 // indirect
 	github.com/gogo/protobuf v1.2.1-0.20181231100452-8e4a75f11384
 	github.com/golang/groupcache v0.0.0-20190129154638-5b532d6fd5ef // indirect
 	github.com/golang/protobuf v1.2.1-0.20190205222052-c823c79ea157 // indirect
@@ -27,6 +28,7 @@ require (
 	github.com/rancher/rke v0.1.15 // indirect
 	github.com/rancher/types v0.0.0-20190209051005-7746d46d672f
 	github.com/sirupsen/logrus v1.3.0
+	github.com/spf13/afero v1.2.1 // indirect
 	github.com/spf13/pflag v1.0.3 // indirect
 	go.opencensus.io v0.19.0 // indirect
 	golang.org/x/crypto v0.0.0-20190208162236-193df9c0f06f // indirect
