@@ -689,7 +689,7 @@ func (d *Driver) Update(ctx context.Context, info *types.ClusterInfo, options *t
 	return d.createOrUpdate(ctx, options, false)
 }
 
-func (d *Driver) createOrUpdate(ctx context.Context, options *types.DriverOptions, sendRBAC bool) (*types.ClusterInfo, error) {
+func (d *Driver) createOrUpdate(ctx context.Context, options *types.DriverOptions, creating bool) (*types.ClusterInfo, error) {
 	driverState, err := getStateFromOptions(options)
 	if err != nil {
 		return nil, err
@@ -738,8 +738,10 @@ func (d *Driver) createOrUpdate(ctx context.Context, options *types.DriverOption
 	}
 	tags["displayName"] = to.StringPtr(displayName)
 
-	if err := subnetAlreadyAttached(ctx, driverState, ""); err != nil {
-		return info, err
+	if creating {
+		if _, err := subnetAlreadyAttached(ctx, driverState, ""); err != nil {
+			return info, err
+		}
 	}
 
 	exists, err := d.resourceGroupExists(ctx, resourceGroupsClient, driverState.ResourceGroup)
@@ -922,7 +924,7 @@ func (d *Driver) createOrUpdate(ctx context.Context, options *types.DriverOption
 		},
 	}
 
-	if sendRBAC {
+	if creating {
 		managedCluster.ManagedClusterProperties.EnableRBAC = to.BoolPtr(true)
 	}
 
@@ -1552,15 +1554,18 @@ func associateNetworkRessourcesWithNodeSubnet(info *types.ClusterInfo) error {
 	subnet.NetworkSecurityGroup = &network.SubResource{ID: sgID}
 	subnet.RouteTable = &network.SubResource{ID: routeTableID}
 
-	if err := subnetAlreadyAttached(context.Background(), state, *subnet.RouteTable.ID); err != nil {
+	if ok, err := subnetAlreadyAttached(context.Background(), state, *routeTableID); err != nil {
 		return err
+	} else if ok {
+		// Subnet already attached to right cluster
+		return nil
 	}
 
 	_, err = subnetClient.CreateOrUpdate(context.Background(), state.VirtualNetworkResourceGroup, state.VirtualNetwork, state.Subnet, subnet)
-
 	if err != nil {
 		return fmt.Errorf("error updating subnet: %v", err)
 	}
+
 	return nil
 }
 
@@ -1613,23 +1618,23 @@ func getSubnet(ctx context.Context, state state) (network.Subnet, error) {
 	return subnetClient.Get(context.Background(), nrg, state.VirtualNetwork, state.Subnet)
 }
 
-func subnetAlreadyAttached(ctx context.Context, state state, routeTableID string) error {
+func subnetAlreadyAttached(ctx context.Context, state state, routeTableID string) (bool, error) {
 
 	if !shouldBeAssociate(state) {
-		return nil
+		return false, nil
 	}
 
 	subnet, err := getSubnet(ctx, state)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	if subnet.RouteTable != nil {
 		if *subnet.RouteTable.ID == routeTableID {
 			// Already attach to right route table
-			return nil
+			return true, nil
 		}
-		return fmt.Errorf("subnet already attached to a routing table %v", *subnet.RouteTable.ID)
+		return true, fmt.Errorf("subnet already attached to a routing table %v", *subnet.RouteTable.ID)
 	}
-	return nil
+	return false, nil
 }
