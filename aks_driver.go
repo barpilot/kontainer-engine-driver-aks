@@ -182,8 +182,9 @@ func (d *Driver) GetDriverCreateOptions(ctx context.Context) (*types.DriverFlags
 		Usage: `The ID of an Azure Active Directory server application of type "Web app/API". This application represents the managed cluster's apiserver (Server application).`,
 	}
 	driverFlag.Options["aad-server-app-secret"] = &types.Flag{
-		Type:  types.StringType,
-		Usage: `The secret of an Azure Active Directory server application.`,
+		Type:     types.StringType,
+		Password: true,
+		Usage:    `The secret of an Azure Active Directory server application.`,
 	}
 	driverFlag.Options["aad-tenant-id"] = &types.Flag{
 		Type:  types.StringType,
@@ -761,12 +762,9 @@ func (d *Driver) createOrUpdate(ctx context.Context, options *types.DriverOption
 	var aadProfile *containerservice.ManagedClusterAADProfile
 	if driverState.hasAzureActiveDirectoryProfile() {
 		aadProfile = &containerservice.ManagedClusterAADProfile{
-			ClientAppID: to.StringPtr(driverState.AzureADClientAppID),
-			ServerAppID: to.StringPtr(driverState.AzureADServerAppID),
-		}
-
-		if driverState.AzureADServerAppSecret != "" {
-			aadProfile.ServerAppSecret = to.StringPtr(driverState.AzureADServerAppSecret)
+			ClientAppID:     to.StringPtr(driverState.AzureADClientAppID),
+			ServerAppID:     to.StringPtr(driverState.AzureADServerAppID),
+			ServerAppSecret: to.StringPtr(driverState.AzureADServerAppSecret),
 		}
 
 		if driverState.AzureADTenantID != "" {
